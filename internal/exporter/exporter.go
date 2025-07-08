@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Exporter holds Prometheus metrics and an rclone client.
+// Exporter defines Prometheus metrics and wraps an rclone client.
 type Exporter struct {
 	rcloneClient         rclone.Client
 	rcloneSizeBytes      *prometheus.GaugeVec
@@ -20,7 +20,7 @@ type Exporter struct {
 	scrapeErrorsTotal    prometheus.Counter
 }
 
-// NewExporter registers and returns a new Exporter instance.
+// NewExporter creates a new Exporter instance and registers metrics.
 func NewExporter(rcloneClient rclone.Client) *Exporter {
 	e := &Exporter{
 		rcloneClient: rcloneClient,
@@ -32,6 +32,7 @@ func NewExporter(rcloneClient rclone.Client) *Exporter {
 			},
 			[]string{"remote"},
 		),
+
 		rcloneObjectsCount: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Name: "rclone_remote_objects_count",
@@ -39,22 +40,25 @@ func NewExporter(rcloneClient rclone.Client) *Exporter {
 			},
 			[]string{"remote"},
 		),
+
 		probeSuccess: prometheus.NewGauge(
 			prometheus.GaugeOpts{
 				Name: "rclone_probe_success",
-				Help: "1 if the rclone size probe succeeded, 0 otherwise.",
+				Help: "1 if the last rclone probe was successful, 0 otherwise.",
 			},
 		),
+
 		probeDurationSeconds: prometheus.NewGauge(
 			prometheus.GaugeOpts{
 				Name: "rclone_probe_duration_seconds",
 				Help: "Duration of the rclone size probe in seconds.",
 			},
 		),
+
 		scrapeErrorsTotal: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Name: "rclone_exporter_scrape_errors_total",
-				Help: "Total number of probe errors.",
+				Help: "Total number of rclone probe errors.",
 			},
 		),
 	}
@@ -71,21 +75,22 @@ func NewExporter(rcloneClient rclone.Client) *Exporter {
 	return e
 }
 
-// ProbeHandler handles /probe requests and emits metrics for a given remote.
+// ProbeHandler handles /probe requests and emits Prometheus metrics.
 func (e *Exporter) ProbeHandler(w http.ResponseWriter, r *http.Request) {
+	// Reset probe status metrics
 	e.probeSuccess.Set(0)
 	e.probeDurationSeconds.Set(0)
 
 	remote := r.URL.Query().Get("remote")
 	if remote == "" {
-		http.Error(w, "Missing 'remote' parameter", http.StatusBadRequest)
+		http.Error(w, "Missing 'remote' query parameter", http.StatusBadRequest)
 		e.scrapeErrorsTotal.Inc()
 		log.Warn().Str("client", r.RemoteAddr).Msg("Missing 'remote' parameter")
 		return
 	}
 
 	start := time.Now()
-	log.Info().Str("remote", remote).Msg("Starting probe")
+	log.Info().Str("remote", remote).Msg("Starting rclone probe")
 
 	defer func() {
 		e.probeDurationSeconds.Set(time.Since(start).Seconds())
@@ -95,19 +100,15 @@ func (e *Exporter) ProbeHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		e.scrapeErrorsTotal.Inc()
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		log.Error().Err(err).Str("remote", remote).Msg("Probe failed")
+		log.Error().Err(err).Str("remote", remote).Msg("rclone probe failed")
 		return
 	}
 
+	// Update metrics with labels
 	e.rcloneSizeBytes.WithLabelValues(remote).Set(float64(output.Bytes))
 	e.rcloneObjectsCount.WithLabelValues(remote).Set(float64(output.Count))
 	e.probeSuccess.Set(1)
 
-	log.Info().
-		Str("remote", remote).
-		Int64("bytes", output.Bytes).
-		Int64("count", output.Count).
-		Msg("Probe successful")
-
+	// Serve updated metrics for this request
 	promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{}).ServeHTTP(w, r)
 }

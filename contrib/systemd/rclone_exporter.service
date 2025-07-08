@@ -3,7 +3,7 @@ Description=Prometheus rclone exporter
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/rclone-exporter \
+ExecStart=/usr/local/bin/rclone_exporter \
   --web.listen-address=:9116 \
   --web.probe-path=/probe \
   --web.telemetry-path=/metrics \

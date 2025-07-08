@@ -73,7 +73,7 @@ scrape_configs:
         target_label: instance
 
       - target_label: __address__
-        replacement: "rclone-exporter:9116" # Replace with your exporter's host:port
+        replacement: "rclone_exporter:9116" # Replace with your exporter's host:port
 ```
 
 ## 🏗️ Contributing
