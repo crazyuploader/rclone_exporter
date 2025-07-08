@@ -35,6 +35,7 @@ RUN apk add --no-cache curl zip
 RUN case "${TARGETARCH}" in \
     "amd64") curl -L https://downloads.rclone.org/rclone-current-linux-amd64.zip -o rclone.zip ;; \
     "arm64") curl -L https://downloads.rclone.org/rclone-current-linux-arm64.zip -o rclone.zip ;; \
+    "arm") curl -L https://downloads.rclone.org/rclone-current-linux-arm-v7.zip -o rclone.zip ;; \
     *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
     esac && \
     unzip rclone.zip && \
