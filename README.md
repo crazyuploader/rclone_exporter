@@ -35,6 +35,8 @@ go build -o rclone_exporter ./cmd/rclone_exporter
 ./rclone_exporter --web.listen-address=":9116"
 ```
 
+You can run the exporter as a systemd service using the [unit file](contrib/systemd/rclone_exporter.service) provided in the `contrib/systemd` directory.
+
 Or with Docker:
 
 ```code
@@ -51,27 +53,27 @@ Configure Prometheus to scrape the exporter using the metrics_path: /probe and r
 ```yaml
 # prometheus.yml
 scrape_configs:
-    - job_name: "rclone_exporter"
-      metrics_path: /probe
-      scrape_interval: 300s
-      params:
-          module: [rclone_size_probe] # Optional
+  - job_name: "rclone_exporter"
+    metrics_path: /probe
+    scrape_interval: 300s
+    params:
+      module: [rclone_size_probe] # Optional
 
-      static_configs:
-          - targets:
-                - "gdrive"
-                - "s3bucket"
-                - "dropbox"
+    static_configs:
+      - targets:
+          - "gdrive"
+          - "s3bucket"
+          - "dropbox"
 
-      relabel_configs:
-          - source_labels: [__address__]
-            target_label: __param_remote
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_remote
 
-          - source_labels: [__param_remote]
-            target_label: instance
+      - source_labels: [__param_remote]
+        target_label: instance
 
-          - target_label: __address__
-            replacement: "rclone-exporter:9116" # Replace with your exporter's host:port
+      - target_label: __address__
+        replacement: "rclone-exporter:9116" # Replace with your exporter's host:port
 ```
 
 ## 🏗️ Contributing

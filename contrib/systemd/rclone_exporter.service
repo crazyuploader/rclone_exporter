@@ -1,0 +1,22 @@
+[Unit]
+Description=Prometheus rclone exporter
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/rclone-exporter \
+  --web.listen-address=:9116 \
+  --web.probe-path=/probe \
+  --web.telemetry-path=/metrics \
+  --rclone.path=/usr/bin/rclone \
+  --rclone.timeout=1m \
+  --log.pretty=true
+WorkingDirectory=/home/youruser
+User=youruser
+Restart=always
+RestartSec=5s
+
+# Optional: Read-only access to rclone config
+ReadOnlyDirectories=/home/youruser/.config/rclone
+
+[Install]
+WantedBy=multi-user.target

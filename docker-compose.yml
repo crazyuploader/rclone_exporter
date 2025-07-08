@@ -1,15 +1,15 @@
 services:
-    rclone_exporter:
-        image: crazyuploader/rclone_exporter:latest
-        container_name: rclone_exporter
-        ports:
-            - "9116:9116"
-        environment:
-            - RC_EXPORTER_LISTEN=:9116
-            - RC_EXPORTER_PROBE=/probe
-            - RC_EXPORTER_METRICS=/metrics
-            - RC_EXPORTER_RCLONE_TIMEOUT=1m
-            - RC_EXPORTER_LOG_PRETTY=true
-        volumes:
-            - ${HOME}/.config/rclone:/root/.config/rclone:ro
-        restart: unless-stopped
+  rclone_exporter:
+    image: ghcr.io/crazyuploader/rclone_exporter:latest
+    container_name: rclone_exporter
+    ports:
+      - "9116:9116"
+    environment:
+      - RC_EXPORTER_LISTEN=:9116
+      - RC_EXPORTER_PROBE=/probe
+      - RC_EXPORTER_METRICS=/metrics
+      - RC_EXPORTER_RCLONE_TIMEOUT=1m
+      - RC_EXPORTER_LOG_PRETTY=true
+    volumes:
+      - ${HOME}/.config/rclone:/root/.config/rclone:ro
+    restart: unless-stopped
