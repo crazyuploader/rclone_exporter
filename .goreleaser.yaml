@@ -13,6 +13,8 @@ builds:
       - linux
       - windows
       - darwin
+      - freebsd
+      - openbsd
     ldflags:
       - -s -w
     flags: -trimpath
