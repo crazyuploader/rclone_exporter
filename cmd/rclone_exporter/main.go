@@ -1,69 +1,125 @@
 package main
 
 import (
-	"flag" // For parsing command-line flags
+	"context"
 	"fmt"
-	"log"      // For application-level logging
-	"net/http" // For creating and managing the HTTP server
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	"github.com/crazyuploader/rclone_exporter/internal/exporter" // Our exporter package
-	"github.com/crazyuploader/rclone_exporter/internal/rclone"   // Our rclone client package
-	"github.com/prometheus/client_golang/prometheus/promhttp"    // Provides the HTTP handler for /metrics
-)
-
-var (
-	// Define command-line flags using the 'flag' package.
-	// These variables will hold the values parsed from the command line.
-	// `flag.String` takes: (1) flag name, (2) default value, (3) help message.
-	listenAddress = flag.String("web.listen-address", ":9116", "Address to listen on for HTTP requests.")
-	metricsPath   = flag.String("web.telemetry-path", "/metrics", "Path under which to expose metrics.")
-	probePath     = flag.String("web.probe-path", "/probe", "Path under which to expose probe endpoint.")
+	"github.com/crazyuploader/rclone_exporter/internal/exporter"
+	"github.com/crazyuploader/rclone_exporter/internal/rclone"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"github.com/urfave/cli/v2"
 )
 
 func main() {
-	// Parse command-line flags.
-	// This must be called before using the flag variables.
-	flag.Parse()
+	app := &cli.App{
+		Name:  "rclone-exporter",
+		Usage: "Prometheus exporter for rclone",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "web.listen-address",
+				Usage:   "Address to listen on",
+				Value:   ":9116",
+				EnvVars: []string{"RC_EXPORTER_LISTEN"},
+			},
+			&cli.StringFlag{
+				Name:    "web.telemetry-path",
+				Usage:   "Path to expose metrics",
+				Value:   "/metrics",
+				EnvVars: []string{"RC_EXPORTER_METRICS"},
+			},
+			&cli.StringFlag{
+				Name:    "web.probe-path",
+				Usage:   "Path to expose probe endpoint",
+				Value:   "/probe",
+				EnvVars: []string{"RC_EXPORTER_PROBE"},
+			},
+			&cli.StringFlag{
+				Name:    "rclone.path",
+				Usage:   "Path to the rclone binary",
+				Value:   "rclone",
+				EnvVars: []string{"RC_EXPORTER_RCLONE_BIN"},
+			},
+			&cli.DurationFlag{
+				Name:    "rclone.timeout",
+				Usage:   "Timeout for rclone command",
+				Value:   2 * time.Minute,
+				EnvVars: []string{"RC_EXPORTER_RCLONE_TIMEOUT"},
+			},
+			&cli.BoolFlag{
+				Name:    "log.pretty",
+				Usage:   "Enable human-friendly log format",
+				Value:   false,
+				EnvVars: []string{"RC_EXPORTER_LOG_PRETTY"},
+			},
+		},
+		Action: func(c *cli.Context) error {
+			// Logger setup
+			if c.Bool("log.pretty") {
+				log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
+			} else {
+				log.Logger = log.Output(os.Stderr)
+			}
+			zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
-	// 1. Initialize the rclone client.
-	// This creates an instance of our rclone.Client implementation.
-	rcloneClient := rclone.NewRcloneClient()
+			// Rclone client setup
+			rclonePath := c.String("rclone.path")
+			rcloneTimeout := c.Duration("rclone.timeout")
+			client := rclone.NewRcloneClientWithConfig(rclonePath, rcloneTimeout)
 
-	// 2. Initialize the Prometheus exporter.
-	// We pass the rcloneClient to the exporter, demonstrating dependency injection.
-	// The exporter now has everything it needs to fetch rclone data.
-	rcloneExporter := exporter.NewExporter(rcloneClient)
+			exporter := exporter.NewExporter(client)
 
-	// 3. Register HTTP handlers for our web server.
-	// These handlers define what happens when an HTTP request hits a specific path.
+			// HTTP handler setup
+			http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintf(w, "rclone-exporter is running.\nUse %s?remote=<name>\n", c.String("web.probe-path"))
+			})
+			http.Handle(c.String("web.telemetry-path"), promhttp.Handler())
+			http.HandleFunc(c.String("web.probe-path"), exporter.ProbeHandler)
 
-	// The first handler is for the root path ("/").
-	// This is a simple health check or welcome message.
-	// It responds with a message indicating that the exporter is running
-	// and provides instructions on how to use the /probe endpoint.
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "rclone-exporter is running. Use /probe?remote=name to fetch remote metrics.")
-	})
+			// Server setup
+			server := &http.Server{Addr: c.String("web.listen-address")}
 
-	// Handler for the main /metrics endpoint.
-	// This serves general exporter metrics (like scrape_errors_total)
-	// and any other metrics registered with the default Prometheus registry.
-	// promhttp.Handler() is a convenient handler provided by the Prometheus client library.
-	http.Handle(*metricsPath, promhttp.Handler())
+			// Graceful shutdown
+			idleConnsClosed := make(chan struct{})
+			go func() {
+				sigCh := make(chan os.Signal, 1)
+				signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
-	// Handler for the /probe endpoint.
-	// This is where Prometheus will send requests for specific rclone remotes.
-	// We use rcloneExporter.ProbeHandler, which is a method on our Exporter struct.
-	http.HandleFunc(*probePath, rcloneExporter.ProbeHandler)
+				<-sigCh
+				log.Warn().Msg("Shutdown signal received")
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := server.Shutdown(ctx); err != nil {
+					log.Error().Err(err).Msg("HTTP shutdown failed")
+				}
+				close(idleConnsClosed)
+			}()
 
-	// Log startup information.
-	log.Printf("Starting rclone exporter on %s", *listenAddress)
-	log.Printf("Metrics exposed on %s", *metricsPath)
-	log.Printf("Probe endpoint on %s", *probePath)
+			log.Info().
+				Str("listen", server.Addr).
+				Str("metrics", c.String("web.telemetry-path")).
+				Str("probe", c.String("web.probe-path")).
+				Str("rclone", rclonePath).
+				Dur("timeout", rcloneTimeout).
+				Msg("Starting rclone-exporter")
 
-	// Start the HTTP server.
-	// http.ListenAndServe blocks indefinitely until the server stops (e.g., due to an error).
-	// If it returns an error (e.g., port already in use), log.Fatal will print the error
-	// and terminate the application.
-	log.Fatal(http.ListenAndServe(*listenAddress, nil))
+			if err := server.ListenAndServe(); err != http.ErrServerClosed {
+				log.Fatal().Err(err).Msg("HTTP server crashed")
+			}
+
+			<-idleConnsClosed
+			log.Info().Msg("Exporter exited cleanly")
+			return nil
+		},
+	}
+
+	if err := app.Run(os.Args); err != nil {
+		log.Fatal().Err(err).Msg("Application failed")
+	}
 }

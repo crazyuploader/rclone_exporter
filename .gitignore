@@ -21,3 +21,7 @@
 
 # ...even if they are in subdirectories
 !*/
+
+# Docker files
+!Dockerfile
+!docker-compose.yml
