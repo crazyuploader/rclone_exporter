@@ -14,54 +14,54 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v3"
 )
 
 func main() {
-	app := &cli.App{
-		Name:  "rclone-exporter",
+	app := &cli.Command{
+		Name:  "rclone_exporter",
 		Usage: "Prometheus exporter for rclone",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "web.listen-address",
 				Usage:   "Address to listen on",
 				Value:   ":9116",
-				EnvVars: []string{"RC_EXPORTER_LISTEN"},
+				Sources: cli.EnvVars("RC_EXPORTER_LISTEN"),
 			},
 			&cli.StringFlag{
 				Name:    "web.telemetry-path",
 				Usage:   "Path to expose metrics",
 				Value:   "/metrics",
-				EnvVars: []string{"RC_EXPORTER_METRICS"},
+				Sources: cli.EnvVars("RC_EXPORTER_METRICS"),
 			},
 			&cli.StringFlag{
 				Name:    "web.probe-path",
 				Usage:   "Path to expose probe endpoint",
 				Value:   "/probe",
-				EnvVars: []string{"RC_EXPORTER_PROBE"},
+				Sources: cli.EnvVars("RC_EXPORTER_PROBE"),
 			},
 			&cli.StringFlag{
 				Name:    "rclone.path",
 				Usage:   "Path to the rclone binary",
 				Value:   "rclone",
-				EnvVars: []string{"RC_EXPORTER_RCLONE_BIN"},
+				Sources: cli.EnvVars("RC_EXPORTER_RCLONE_BIN"),
 			},
 			&cli.DurationFlag{
 				Name:    "rclone.timeout",
 				Usage:   "Timeout for rclone command",
 				Value:   2 * time.Minute,
-				EnvVars: []string{"RC_EXPORTER_RCLONE_TIMEOUT"},
+				Sources: cli.EnvVars("RC_EXPORTER_RCLONE_TIMEOUT"),
 			},
 			&cli.BoolFlag{
 				Name:    "log.pretty",
 				Usage:   "Enable human-friendly log format",
 				Value:   false,
-				EnvVars: []string{"RC_EXPORTER_LOG_PRETTY"},
+				Sources: cli.EnvVars("RC_EXPORTER_LOG_PRETTY"),
 			},
 		},
-		Action: func(c *cli.Context) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
 			// Logger setup
-			if c.Bool("log.pretty") {
+			if cmd.Bool("log.pretty") {
 				log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
 			} else {
 				log.Logger = log.Output(os.Stderr)
@@ -69,21 +69,21 @@ func main() {
 			zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
 			// Rclone client setup
-			rclonePath := c.String("rclone.path")
-			rcloneTimeout := c.Duration("rclone.timeout")
+			rclonePath := cmd.String("rclone.path")
+			rcloneTimeout := cmd.Duration("rclone.timeout")
 			client := rclone.NewRcloneClientWithConfig(rclonePath, rcloneTimeout)
 
 			exporter := exporter.NewExporter(client)
 
 			// HTTP handler setup
 			http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-				fmt.Fprintf(w, "rclone-exporter is running.\nUse %s?remote=<name>\n", c.String("web.probe-path"))
+				fmt.Fprintf(w, "rclone-exporter is running.\nUse %s?remote=<name>\n", cmd.String("web.probe-path"))
 			})
-			http.Handle(c.String("web.telemetry-path"), promhttp.Handler())
-			http.HandleFunc(c.String("web.probe-path"), exporter.ProbeHandler)
+			http.Handle(cmd.String("web.telemetry-path"), promhttp.Handler())
+			http.HandleFunc(cmd.String("web.probe-path"), exporter.ProbeHandler)
 
 			// Server setup
-			server := &http.Server{Addr: c.String("web.listen-address")}
+			server := &http.Server{Addr: cmd.String("web.listen-address")}
 
 			// Graceful shutdown
 			idleConnsClosed := make(chan struct{})
@@ -103,8 +103,8 @@ func main() {
 
 			log.Info().
 				Str("listen", server.Addr).
-				Str("metrics", c.String("web.telemetry-path")).
-				Str("probe", c.String("web.probe-path")).
+				Str("metrics", cmd.String("web.telemetry-path")).
+				Str("probe", cmd.String("web.probe-path")).
 				Str("rclone", rclonePath).
 				Dur("timeout", rcloneTimeout).
 				Msg("Starting rclone-exporter")
@@ -119,7 +119,7 @@ func main() {
 		},
 	}
 
-	if err := app.Run(os.Args); err != nil {
+	if err := app.Run(context.Background(), os.Args); err != nil {
 		log.Fatal().Err(err).Msg("Application failed")
 	}
 }
