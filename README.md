@@ -39,7 +39,7 @@ Or with Docker:
 
 ```code
 docker build -t rclone_exporter .
-docker run -v ~/.config/rclone:/root/.config/rclone -p 9116:9116 rclone_exporter
+docker run -v ~/.config/rclone:/root/.config/rclone:ro -p 9116:9116 rclone_exporter
 ```
 
 Verify at `http://localhost:9116/metrics` and `http://localhost:9116/probe?remote=YOUR_REMOTE_NAME`.
