@@ -39,7 +39,7 @@ RUN case "${TARGETARCH}" in \
     *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
     esac && \
     unzip rclone.zip && \
-    mv rclone-*-linux-* /usr/local/bin/rclone && \
+    mv rclone-*-linux-*/rclone /usr/local/bin/rclone && \
     chmod +x /usr/local/bin/rclone && \
     rm rclone.zip
 
