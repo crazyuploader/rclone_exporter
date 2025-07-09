@@ -6,7 +6,9 @@ before:
     - go generate ./...
 
 builds:
-  - main: ./cmd/rclone_exporter/main.go
+  - id: cli
+    main: ./cmd/rclone_exporter/main.go
+    binary: rclone_exporter
     env:
       - CGO_ENABLED=0
     goos:
@@ -15,21 +17,26 @@ builds:
       - darwin
       - freebsd
       - openbsd
+    goarch:
+      - amd64
+      - arm64
+      - "386"
+      - arm
+    goarm:
+      - "6"
+      - "7"
     ldflags:
       - -s -w
     flags: -trimpath
 
 archives:
-  - formats: [tar.gz]
-    # this name template makes the OS and Arch compatible with the results of `uname`.
+  - id: cli
+    formats: [tar.gz]
     name_template: >-
-      {{ .ProjectName }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
+      {{ .ProjectName }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    # use zip for windows archives
     format_overrides:
       - goos: windows
         formats: [zip]
@@ -41,12 +48,18 @@ changelog:
       - "^docs:"
       - "^test:"
 
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ .ProjectName }}-dev"
+
 env_files:
   github_token: ~/.github-token_goreleaser
 
 release:
-  footer: >-
-
+  footer: |-
     ---
 
     Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
