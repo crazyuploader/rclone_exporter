@@ -17,7 +17,7 @@ A Prometheus exporter for `rclone`, designed to monitor the size, object count, 
 
 ### Prerequisites
 
-- **Go (1.18+):** To build from source.
+- **Go (1.24+):** To build from source.
 - **rclone:** Must be installed and configured (`rclone.conf`) on the host running the exporter.
 - **Prometheus:** To scrape metrics.
 
