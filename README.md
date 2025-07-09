@@ -1,6 +1,8 @@
 # Rclone Exporter
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/crazyuploader/rclone_exporter)](https://goreportcard.com/report/github.com/crazyuploader/rclone_exporter)
+[![GoReleaser Release Pipeline](https://github.com/crazyuploader/rclone_exporter/actions/workflows/build-and-release.yml/badge.svg)](https://github.com/crazyuploader/rclone_exporter/actions/workflows/build-and-release.yml)
+[![Publish to GitHub Container Registry](https://github.com/crazyuploader/rclone_exporter/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/crazyuploader/rclone_exporter/actions/workflows/docker-publish.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 A Prometheus exporter for `rclone`, designed to monitor the size, object count, and other metrics of your configured rclone remote(s).
