@@ -22,7 +22,7 @@ jobs:
       - run:
           name: Build
           command: |
-            go build -v ./...
+            go build ./...
 
 workflows:
   build-and-test:
