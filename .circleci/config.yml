@@ -23,6 +23,7 @@ jobs:
           name: Build
           command: |
             go build ./...
+            echo "Build Completed!"
 
 workflows:
   build-and-test:
