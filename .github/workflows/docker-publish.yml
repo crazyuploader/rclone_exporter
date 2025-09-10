@@ -2,16 +2,15 @@ name: Publish to GitHub Container Registry
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    tags:
+      - 'v*'
 
 permissions:
   packages: write
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_TAG: 1.0
+  IMAGE_TAG: ${{ github.ref_name }}
   IMAGE_NAME: crazyuploader/rclone_exporter
 
 jobs:
