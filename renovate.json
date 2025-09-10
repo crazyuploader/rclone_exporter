@@ -1,32 +1,33 @@
 {
-    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-    "extends": ["config:recommended"],
-    "automerge": true,
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "automerge": true,
+  "deleteBranchAfterMerge": true,
 
-    "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
+  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
 
-    "rebaseWhen": "conflicted",
-    "recreateClosed": true,
-    "recreateWhen": "always",
-    "gomod": {
-        "enabled": true
-    },
+  "rebaseWhen": "conflicted",
+  "recreateClosed": true,
+  "recreateWhen": "always",
+  "gomod": {
+    "enabled": true
+  },
 
-    "packageRules": [
-        {
-            "matchManagers": ["gomod"],
-            "automerge": true,
-            "postUpdateOptions": ["gomodTidy"],
-            "rebaseWhen": "behind-base-branch"
-        }
-    ],
+  "packageRules": [
+    {
+      "matchManagers": ["gomod"],
+      "automerge": true,
+      "postUpdateOptions": ["gomodTidy"],
+      "rebaseWhen": "behind-base-branch"
+    }
+  ],
 
-    "prHourlyLimit": 2,
-    "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "prConcurrentLimit": 5,
 
-    "schedule": [
-        "after 10pm every weekday",
-        "before 5am every weekday",
-        "every weekend"
-    ]
+  "schedule": [
+    "after 10pm every weekday",
+    "before 5am every weekday",
+    "every weekend"
+  ]
 }
