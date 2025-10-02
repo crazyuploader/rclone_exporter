@@ -11,11 +11,15 @@ import (
 
 	"github.com/crazyuploader/rclone_exporter/internal/exporter"
 	"github.com/crazyuploader/rclone_exporter/internal/logging"
+	"github.com/crazyuploader/rclone_exporter/internal/otel"
 	"github.com/crazyuploader/rclone_exporter/internal/rclone"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
 	cli "github.com/urfave/cli/v3"
 )
+
+// AppVersion defines the current version of the application.
+const AppVersion = "0.1.0"
 
 // Constants for better maintainability
 const (
@@ -180,6 +184,17 @@ func main() {
 			return runServer(ctx, cmd)
 		},
 	}
+
+	// Setup OpenTelemetry metrics
+	shutdownOTel, err := otel.SetupOTLPMetrics(context.Background(), app.Name, AppVersion)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to setup OpenTelemetry metrics")
+	}
+	defer func() {
+		if err := shutdownOTel(context.Background()); err != nil {
+			log.Error().Err(err).Msg("Failed to shutdown OpenTelemetry metrics")
+		}
+	}()
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
 		log.Fatal().Err(err).Msg("Application startup failed")
