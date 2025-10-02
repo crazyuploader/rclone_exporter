@@ -63,9 +63,9 @@ scrape_configs:
 
     static_configs:
       - targets:
-          - "gdrive"
-          - "s3bucket"
-          - "dropbox"
+          - "gdrive:"
+          - "s3bucket:"
+          - "dropbox:"
 
     relabel_configs:
       - source_labels: [__address__]
