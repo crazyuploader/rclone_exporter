@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -46,6 +47,23 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // runServer initializes the rclone client, sets up HTTP handlers, and starts the server
+func remotesHandler(client rclone.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		remotes, err := client.ListRemotes()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to list remotes: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		resp := struct {
+			Remotes []string `json:"remotes"`
+		}{Remotes: remotes}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
+	}
+}
+
 func runServer(_ context.Context, cmd *cli.Command) error {
 	// Setup rclone client
 	rclonePath := cmd.String("rclone.path")
@@ -66,6 +84,7 @@ func runServer(_ context.Context, cmd *cli.Command) error {
 	mux.Handle(cmd.String("web.telemetry-path"), promhttp.Handler())
 	mux.HandleFunc(cmd.String("web.probe-path"), exp.ProbeHandler)
 	mux.HandleFunc(cmd.String("web.health-path"), healthHandler)
+	mux.HandleFunc("/remotes", remotesHandler(client))
 
 	// HTTP server configuration with security headers
 	server := &http.Server{

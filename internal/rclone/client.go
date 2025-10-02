@@ -22,6 +22,7 @@ type Client interface {
 	GetRemoteSize(remoteName string) (*RcloneSizeOutput, error)
 	CheckBinaryAvailable() error
 	GetVersion() (string, error)
+	ListRemotes() ([]string, error)
 }
 
 // rcloneClient implements the Client interface.
@@ -180,4 +181,34 @@ func (c *rcloneClient) GetRemoteSize(remote string) (*RcloneSizeOutput, error) {
 		Msg("rclone probe successful")
 
 	return &result, nil
+}
+
+// ListRemotes runs `rclone listremotes` and returns the list of remotes.
+func (c *rcloneClient) ListRemotes() ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, c.binaryPath, "listremotes")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("output", string(output)).
+			Str("path", c.binaryPath).
+			Msg("failed to list rclone remotes")
+		return nil, fmt.Errorf("failed to list rclone remotes: %w", err)
+	}
+
+	lines := strings.Split(string(output), "\n")
+	var remotes []string
+	for _, line := range lines {
+		remote := strings.TrimSpace(line)
+		if remote == "" {
+			continue
+		}
+		// Remove trailing colon if present (rclone outputs remotes as "remote:")
+		remote = strings.TrimSuffix(remote, ":")
+		remotes = append(remotes, remote)
+	}
+	return remotes, nil
 }
