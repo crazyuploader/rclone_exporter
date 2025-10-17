@@ -23,8 +23,13 @@ builds:
       - "386"
       - arm
     ldflags:
-      - -s -w -X main.version={{.Version}}
-    flags: -trimpath
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.FullCommit}}
+      - -X main.buildDate={{.Date}}
+      - -X main.goVersion={{.Env.GOVERSION}}
+    flags:
+      - -trimpath
 
 archives:
   - id: cli
@@ -50,7 +55,7 @@ checksum:
   algorithm: sha256
 
 snapshot:
-  version_template: "{{ .ProjectName }}-dev"
+  version_template: "{{ .Version }}-SNAPSHOT-{{.ShortCommit}}"
 
 env_files:
   github_token: ~/.github-token_goreleaser
@@ -58,5 +63,7 @@ env_files:
 release:
   footer: |-
     ---
+
+    **Full Changelog**: https://github.com/{{ .Env.GITHUB_REPOSITORY }}/compare/{{ .PreviousTag }}...{{ .Tag }}
 
     Released by [GoReleaser](https://github.com/goreleaser/goreleaser).

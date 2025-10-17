@@ -43,7 +43,6 @@ func NewExporter(rcloneClient rclone.Client) *Exporter {
 		rcloneClient: rcloneClient,
 		registry:     registry,
 		semaphore:    make(chan struct{}, MaxConcurrentProbes),
-
 		scrapeErrorsTotal: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Namespace: namespace,
@@ -52,7 +51,6 @@ func NewExporter(rcloneClient rclone.Client) *Exporter {
 				Help:      "Total number of rclone probe errors.",
 			},
 		),
-
 		probeRequestsTotal: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Namespace: namespace,
@@ -70,6 +68,11 @@ func NewExporter(rcloneClient rclone.Client) *Exporter {
 	)
 
 	return e
+}
+
+// Registry returns the custom prometheus registry
+func (e *Exporter) Registry() *prometheus.Registry {
+	return e.registry
 }
 
 // Close unregisters all metrics to prevent memory leaks
@@ -104,7 +107,6 @@ func (e *Exporter) validateRemote(remote string) error {
 // handleError provides consistent error handling
 func (e *Exporter) handleError(w http.ResponseWriter, r *http.Request, remote, message string, status int, err error) {
 	e.scrapeErrorsTotal.Inc()
-
 	http.Error(w, message, status)
 
 	logEvent := log.Warn().
@@ -170,7 +172,7 @@ func (e *Exporter) ProbeHandler(w http.ResponseWriter, r *http.Request) {
 	// Create a fresh registry for this probe
 	probeRegistry := prometheus.NewRegistry()
 
-	// Create metrics for this specific probe with enhanced labels
+	// Create metrics for this specific probe with enhanced labels including remote_type
 	sizeBytes := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: namespace,
@@ -178,7 +180,7 @@ func (e *Exporter) ProbeHandler(w http.ResponseWriter, r *http.Request) {
 			Name:      "size_bytes",
 			Help:      "Total size of the rclone remote in bytes.",
 		},
-		[]string{"remote", "remote_name", "path"},
+		[]string{"remote", "remote_name", "path", "remote_type"},
 	)
 
 	objectsCount := prometheus.NewGaugeVec(
@@ -188,7 +190,7 @@ func (e *Exporter) ProbeHandler(w http.ResponseWriter, r *http.Request) {
 			Name:      "objects_count",
 			Help:      "Total number of objects in the rclone remote.",
 		},
-		[]string{"remote", "remote_name", "path"},
+		[]string{"remote", "remote_name", "path", "remote_type"},
 	)
 
 	probeSuccess := prometheus.NewGaugeVec(
@@ -198,7 +200,7 @@ func (e *Exporter) ProbeHandler(w http.ResponseWriter, r *http.Request) {
 			Name:      "success",
 			Help:      "Whether the last rclone probe was successful (1 = success, 0 = failure).",
 		},
-		[]string{"remote", "remote_name"},
+		[]string{"remote", "remote_name", "remote_type"},
 	)
 
 	probeDurationSeconds := prometheus.NewGaugeVec(
@@ -208,7 +210,7 @@ func (e *Exporter) ProbeHandler(w http.ResponseWriter, r *http.Request) {
 			Name:      "duration_seconds",
 			Help:      "Duration of the rclone size probe in seconds.",
 		},
-		[]string{"remote", "remote_name"},
+		[]string{"remote", "remote_name", "remote_type"},
 	)
 
 	probeInfo := prometheus.NewGaugeVec(
@@ -218,7 +220,7 @@ func (e *Exporter) ProbeHandler(w http.ResponseWriter, r *http.Request) {
 			Name:      "info",
 			Help:      "Information about the probe target (always 1).",
 		},
-		[]string{"remote", "remote_name", "path"},
+		[]string{"remote", "remote_name", "path", "remote_type"},
 	)
 
 	// Register probe-specific metrics with the probe registry
@@ -232,34 +234,46 @@ func (e *Exporter) ProbeHandler(w http.ResponseWriter, r *http.Request) {
 	probeRegistry.MustRegister(e.scrapeErrorsTotal)
 	probeRegistry.MustRegister(e.probeRequestsTotal)
 
-	// Set probe info metric
-	probeInfo.WithLabelValues(remote, remoteName, remotePath).Set(1)
+	// Get remote type (best effort - default to "unknown" if fails)
+	remoteType, typeErr := e.rcloneClient.GetRemoteType(remoteName)
+	if typeErr != nil {
+		log.Debug().
+			Err(typeErr).
+			Str("remote", remoteName).
+			Msg("Failed to detect remote type, using 'unknown'")
+		remoteType = "unknown"
+	}
+
+	// Set probe info metric with type
+	probeInfo.WithLabelValues(remote, remoteName, remotePath, remoteType).Set(1)
 
 	// Always update probe duration, even on failure
 	defer func() {
 		duration := time.Since(start).Seconds()
-		probeDurationSeconds.WithLabelValues(remote, remoteName).Set(duration)
-
+		probeDurationSeconds.WithLabelValues(remote, remoteName, remoteType).Set(duration)
 		log.Debug().
 			Str("remote", remote).
+			Str("remote_type", remoteType).
 			Float64("duration_seconds", duration).
 			Msg("Probe completed")
 	}()
 
+	// Get remote size and type information
 	output, err := e.rcloneClient.GetRemoteSize(remote)
 	if err != nil {
-		probeSuccess.WithLabelValues(remote, remoteName).Set(0)
+		probeSuccess.WithLabelValues(remote, remoteName, remoteType).Set(0)
 		e.handleError(w, r, remote, "rclone probe failed", http.StatusInternalServerError, err)
 		return
 	}
 
-	// Update metrics with labels
-	sizeBytes.WithLabelValues(remote, remoteName, remotePath).Set(float64(output.Bytes))
-	objectsCount.WithLabelValues(remote, remoteName, remotePath).Set(float64(output.Count))
-	probeSuccess.WithLabelValues(remote, remoteName).Set(1)
+	// Update metrics with labels including remote type
+	sizeBytes.WithLabelValues(remote, remoteName, remotePath, remoteType).Set(float64(output.Bytes))
+	objectsCount.WithLabelValues(remote, remoteName, remotePath, remoteType).Set(float64(output.Count))
+	probeSuccess.WithLabelValues(remote, remoteName, remoteType).Set(1)
 
 	log.Debug().
 		Str("remote", remote).
+		Str("remote_type", remoteType).
 		Int64("bytes", output.Bytes).
 		Int64("objects", output.Count).
 		Msg("Probe successful")
