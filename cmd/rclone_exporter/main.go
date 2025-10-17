@@ -18,6 +18,7 @@ import (
 	cli "github.com/urfave/cli/v3"
 )
 
+
 // Constants for better maintainability
 const (
 	DefaultShutdownTimeout = 10 * time.Second
@@ -119,6 +120,10 @@ func runServer(_ context.Context, cmd *cli.Command) error {
 	}()
 
 	log.Info().
+		Str("version", version).
+		Msg("Starting rclone_exporter")
+
+	log.Info().
 		Str("listen", server.Addr).
 		Str("metrics_path", cmd.String("web.telemetry-path")).
 		Str("probe_path", cmd.String("web.probe-path")).
@@ -141,8 +146,9 @@ func runServer(_ context.Context, cmd *cli.Command) error {
 // main function initializes the CLI application and starts the server
 func main() {
 	app := &cli.Command{
-		Name:  "rclone_exporter",
-		Usage: "Prometheus exporter for rclone",
+		Name:    "rclone_exporter",
+		Usage:   "Prometheus exporter for rclone",
+		Version: version,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "web.listen-address",
