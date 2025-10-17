@@ -139,7 +139,18 @@ func (c *rcloneClient) GetRemoteType(remoteName string) (string, error) {
 		return "unknown", fmt.Errorf("invalid rclone config JSON: %w", err)
 	}
 
-	// Look up the remote
+	// Warm cache for all remotes
+	c.cacheMu.Lock()
+	now := time.Now()
+	for name, cfg := range configs {
+		if t, ok := cfg["type"].(string); ok && t != "" {
+			c.remoteTypeCache[name] = t
+			c.cacheTimestamps[name] = now
+		}
+	}
+	c.cacheMu.Unlock()
+
+	// Look up the requested remote
 	remoteConfig, exists := configs[remoteName]
 	if !exists {
 		log.Warn().
@@ -226,28 +237,23 @@ func (c *rcloneClient) ClearCache() {
 	log.Debug().Msg("Cleared entire remote type cache")
 }
 
-// ListRemotes runs `rclone listremotes --long --json` and returns the list of remotes with details.
+// ListRemotes runs `rclone listremotes --json` and returns the list of remotes with details.
 func (c *rcloneClient) ListRemotes() ([]RemoteInfo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Try with --long flag first for more details
-	cmd := exec.CommandContext(ctx, c.binaryPath, "listremotes", "--long", "--json")
+	// Get list of rclone remotes
+	cmd := exec.CommandContext(ctx, c.binaryPath, "listremotes", "--json")
 	output, err := cmd.CombinedOutput()
 
-	// Fallback to basic listremotes if --long is not supported
+	// Check for errors
 	if err != nil {
-		log.Debug().Msg("Falling back to basic listremotes (--long not supported)")
-		cmd = exec.CommandContext(ctx, c.binaryPath, "listremotes", "--json")
-		output, err = cmd.CombinedOutput()
-		if err != nil {
-			log.Error().
-				Err(err).
-				Str("output", string(output)).
-				Str("path", c.binaryPath).
-				Msg("Failed to list rclone remotes")
-			return nil, fmt.Errorf("failed to list rclone remotes: %w", err)
-		}
+		log.Error().
+			Err(err).
+			Str("output", string(output)).
+			Str("path", c.binaryPath).
+			Msg("Failed to list rclone remotes")
+		return nil, fmt.Errorf("failed to list rclone remotes: %w", err)
 	}
 
 	// Handle empty output
@@ -371,7 +377,7 @@ func (c *rcloneClient) GetRemoteSize(remote string) (*RcloneSizeOutput, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	// Use --fast-list and --no-traverse for better performance
+	// Use --fast-list for better performance on recursive listings
 	cmd := exec.CommandContext(ctx, c.binaryPath, "size", remote, "--json", "--fast-list")
 
 	log.Debug().

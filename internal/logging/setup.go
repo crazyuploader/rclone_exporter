@@ -48,7 +48,11 @@ func InitLogging(cmd *cli.Command) error {
 	if len(writers) > 1 {
 		output = zerolog.MultiLevelWriter(writers...)
 	} else {
-		output = writers[0]
+		if len(writers) == 1 {
+			output = writers[0]
+		} else {
+			output = os.Stderr
+		}
 	}
 
 	// Configure log level first

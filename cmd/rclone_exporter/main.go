@@ -368,7 +368,7 @@ func runServer(_ context.Context, cmd *cli.Command) error {
 	mux.HandleFunc(cmd.String("web.remotes-path"), remotesHandler)
 	mux.HandleFunc(cmd.String("web.config-path"), configHandler(cmd, client))
 
-	// HTTP server configuration with security headers
+	// HTTP server configuration
 	server := &http.Server{
 		Addr:         cmd.String("web.listen-address"),
 		Handler:      mux,
