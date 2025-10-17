@@ -51,16 +51,19 @@ func InitLogging(cmd *cli.Command) error {
 		output = writers[0]
 	}
 
-	// Create logger with timestamp and caller information
-	log.Logger = zerolog.New(output).
-		With().
-		Timestamp().
-		Caller().
-		Logger()
-
-	// Configure log level
+	// Configure log level first
 	level := getLogLevel(cmd)
 	zerolog.SetGlobalLevel(level)
+
+	// Create logger with conditional caller information
+	logContext := zerolog.New(output).With().Timestamp()
+
+	// Only add caller information in debug or trace mode
+	if level <= zerolog.DebugLevel {
+		logContext = logContext.Caller()
+	}
+
+	log.Logger = logContext.Logger()
 
 	// Configure zerolog global settings
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
@@ -78,11 +81,14 @@ func InitLogging(cmd *cli.Command) error {
 	log.Info().
 		Str("level", level.String()).
 		Bool("pretty", cmd.Bool("log.pretty")).
-		Bool("caller_enabled", true).
+		Bool("caller_enabled", level <= zerolog.DebugLevel).
 		Msg("Logging initialized")
 
-	if level == zerolog.DebugLevel {
+	switch level {
+	case zerolog.DebugLevel:
 		log.Debug().Msg("Debug logging enabled - verbose output active")
+	case zerolog.TraceLevel:
+		log.Trace().Msg("Trace logging enabled - maximum verbosity active")
 	}
 
 	return nil
