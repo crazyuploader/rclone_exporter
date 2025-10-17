@@ -18,6 +18,7 @@ import (
 	cli "github.com/urfave/cli/v3"
 )
 
+var version = "dev"
 
 // Constants for better maintainability
 const (
