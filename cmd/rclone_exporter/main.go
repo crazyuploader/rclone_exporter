@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -26,6 +27,7 @@ const (
 	DefaultProbePath       = "/probe"
 	DefaultRclonePath      = "rclone"
 	DefaultHealthPath      = "/health"
+	DefaultRemotesPath     = "/remotes"
 )
 
 // Handler functions for better organization
@@ -56,12 +58,36 @@ func runServer(_ context.Context, cmd *cli.Command) error {
 	exp := exporter.NewExporter(client)
 	defer exp.Close() // Ensure cleanup
 
+	// Handler for /remotes endpoint
+	remotesHandler := func(w http.ResponseWriter, r *http.Request) {
+		remotes, err := client.ListRemotes()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to list remotes: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+
+		// Gather metadata
+		remoteCount := len(remotes)
+		timestamp := time.Now().UTC().Format(time.RFC3339)
+
+		resp := map[string]interface{}{
+			"remotes":      remotes,
+			"remote_count": remoteCount,
+			"timestamp":    timestamp,
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, "Failed to encode remotes as JSON", http.StatusInternalServerError)
+		}
+	}
+
 	// Setup HTTP handlers
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", rootHandler(cmd.String("web.probe-path")))
 	mux.Handle(cmd.String("web.telemetry-path"), promhttp.Handler())
 	mux.HandleFunc(cmd.String("web.probe-path"), exp.ProbeHandler)
 	mux.HandleFunc(cmd.String("web.health-path"), healthHandler)
+	mux.HandleFunc(cmd.String("web.remotes-path"), remotesHandler)
 
 	// HTTP server configuration with security headers
 	server := &http.Server{
@@ -97,6 +123,7 @@ func runServer(_ context.Context, cmd *cli.Command) error {
 		Str("metrics_path", cmd.String("web.telemetry-path")).
 		Str("probe_path", cmd.String("web.probe-path")).
 		Str("health_path", cmd.String("web.health-path")).
+		Str("remotes_path", cmd.String("web.remotes-path")).
 		Str("rclone_bin", rclonePath).
 		Dur("timeout", rcloneTimeout).
 		Msg("rclone_exporter is up and listening")
@@ -140,6 +167,12 @@ func main() {
 				Usage:   "Path to expose health check endpoint",
 				Value:   DefaultHealthPath,
 				Sources: cli.EnvVars("RC_EXPORTER_HEALTH"),
+			},
+			&cli.StringFlag{
+				Name:    "web.remotes-path",
+				Usage:   "Path to expose remotes endpoint",
+				Value:   DefaultRemotesPath,
+				Sources: cli.EnvVars("RC_EXPORTER_REMOTES"),
 			},
 			&cli.StringFlag{
 				Name:    "rclone.path",

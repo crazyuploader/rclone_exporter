@@ -22,9 +22,17 @@ type Client interface {
 	GetRemoteSize(remoteName string) (*RcloneSizeOutput, error)
 	CheckBinaryAvailable() error
 	GetVersion() (string, error)
+	ListRemotes() ([]RemoteInfo, error)
 }
 
 // rcloneClient implements the Client interface.
+type RemoteInfo struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Source      string `json:"source"`
+	Description string `json:"description"`
+}
+
 type rcloneClient struct {
 	binaryPath string
 	timeout    time.Duration
@@ -50,6 +58,33 @@ func NewRcloneClientWithConfig(path string, timeout time.Duration) Client {
 		binaryPath: path,
 		timeout:    timeout,
 	}
+}
+
+// ListRemotes runs `rclone listremotes --json` and returns the list of remotes with details.
+func (c *rcloneClient) ListRemotes() ([]RemoteInfo, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, c.binaryPath, "listremotes", "--json")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("output", string(output)).
+			Str("path", c.binaryPath).
+			Msg("failed to list rclone remotes")
+		return nil, fmt.Errorf("failed to list rclone remotes: %w", err)
+	}
+
+	var remotes []RemoteInfo
+	if err := json.Unmarshal(output, &remotes); err != nil {
+		log.Error().
+			Err(err).
+			Str("raw_output", string(output)).
+			Msg("failed to parse rclone listremotes JSON output")
+		return nil, fmt.Errorf("invalid rclone listremotes JSON output: %w", err)
+	}
+	return remotes, nil
 }
 
 // CheckBinaryAvailable verifies that rclone is executable and accessible.
