@@ -26,16 +26,12 @@ var (
 
 // Exporter defines Prometheus metrics and wraps an rclone client.
 type Exporter struct {
-	rcloneClient         rclone.Client
-	rcloneSizeBytes      *prometheus.GaugeVec
-	rcloneObjectsCount   *prometheus.GaugeVec
-	probeSuccess         *prometheus.GaugeVec
-	probeDurationSeconds *prometheus.GaugeVec
-	scrapeErrorsTotal    prometheus.Counter
-	probeRequestsTotal   prometheus.Counter
-	registry             *prometheus.Registry
-	semaphore            chan struct{}
-	mu                   sync.RWMutex
+	rcloneClient       rclone.Client
+	scrapeErrorsTotal  prometheus.Counter
+	probeRequestsTotal prometheus.Counter
+	registry           *prometheus.Registry
+	semaphore          chan struct{}
+	mu                 sync.RWMutex
 }
 
 // NewExporter creates a new Exporter instance with a custom registry.
@@ -46,38 +42,6 @@ func NewExporter(rcloneClient rclone.Client) *Exporter {
 		rcloneClient: rcloneClient,
 		registry:     registry,
 		semaphore:    make(chan struct{}, MaxConcurrentProbes),
-
-		rcloneSizeBytes: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Name: "rclone_remote_size_bytes",
-				Help: "Total size of the rclone remote in bytes.",
-			},
-			[]string{"remote"},
-		),
-
-		rcloneObjectsCount: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Name: "rclone_remote_objects_count",
-				Help: "Total number of objects in the rclone remote.",
-			},
-			[]string{"remote"},
-		),
-
-		probeSuccess: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Name: "rclone_probe_success",
-				Help: "1 if the last rclone probe was successful, 0 otherwise.",
-			},
-			[]string{"remote"},
-		),
-
-		probeDurationSeconds: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Name: "rclone_probe_duration_seconds",
-				Help: "Duration of the rclone size probe in seconds.",
-			},
-			[]string{"remote"},
-		),
 
 		scrapeErrorsTotal: prometheus.NewCounter(
 			prometheus.CounterOpts{
@@ -94,12 +58,8 @@ func NewExporter(rcloneClient rclone.Client) *Exporter {
 		),
 	}
 
-	// Register all metrics with the custom registry
+	// Register only the global counters with the shared registry
 	registry.MustRegister(
-		e.rcloneSizeBytes,
-		e.rcloneObjectsCount,
-		e.probeSuccess,
-		e.probeDurationSeconds,
 		e.scrapeErrorsTotal,
 		e.probeRequestsTotal,
 	)
@@ -114,10 +74,6 @@ func (e *Exporter) Close() {
 
 	// Unregister from custom registry
 	if e.registry != nil {
-		e.registry.Unregister(e.rcloneSizeBytes)
-		e.registry.Unregister(e.rcloneObjectsCount)
-		e.registry.Unregister(e.probeSuccess)
-		e.registry.Unregister(e.probeDurationSeconds)
 		e.registry.Unregister(e.scrapeErrorsTotal)
 		e.registry.Unregister(e.probeRequestsTotal)
 	}
@@ -143,10 +99,6 @@ func (e *Exporter) validateRemote(remote string) error {
 // handleError provides consistent error handling
 func (e *Exporter) handleError(w http.ResponseWriter, r *http.Request, remote, message string, status int, err error) {
 	e.scrapeErrorsTotal.Inc()
-
-	if remote != "" {
-		e.probeSuccess.WithLabelValues(remote).Set(0)
-	}
 
 	http.Error(w, message, status)
 
@@ -188,10 +140,56 @@ func (e *Exporter) ProbeHandler(w http.ResponseWriter, r *http.Request) {
 		Str("user_agent", r.UserAgent()).
 		Msg("Starting rclone probe")
 
+	// Create a fresh registry for this probe
+	probeRegistry := prometheus.NewRegistry()
+
+	// Create metrics for this specific probe
+	rcloneSizeBytes := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "rclone_remote_size_bytes",
+			Help: "Total size of the rclone remote in bytes.",
+		},
+		[]string{"remote"},
+	)
+
+	rcloneObjectsCount := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "rclone_remote_objects_count",
+			Help: "Total number of objects in the rclone remote.",
+		},
+		[]string{"remote"},
+	)
+
+	probeSuccess := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "rclone_probe_success",
+			Help: "1 if the last rclone probe was successful, 0 otherwise.",
+		},
+		[]string{"remote"},
+	)
+
+	probeDurationSeconds := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "rclone_probe_duration_seconds",
+			Help: "Duration of the rclone size probe in seconds.",
+		},
+		[]string{"remote"},
+	)
+
+	// Register probe-specific metrics with the probe registry
+	probeRegistry.MustRegister(rcloneSizeBytes)
+	probeRegistry.MustRegister(rcloneObjectsCount)
+	probeRegistry.MustRegister(probeSuccess)
+	probeRegistry.MustRegister(probeDurationSeconds)
+
+	// Also register the global counters so they appear in probe output
+	probeRegistry.MustRegister(e.scrapeErrorsTotal)
+	probeRegistry.MustRegister(e.probeRequestsTotal)
+
 	// Always update probe duration, even on failure
 	defer func() {
 		duration := time.Since(start).Seconds()
-		e.probeDurationSeconds.WithLabelValues(remote).Set(duration)
+		probeDurationSeconds.WithLabelValues(remote).Set(duration)
 
 		log.Debug().
 			Str("remote", remote).
@@ -201,14 +199,15 @@ func (e *Exporter) ProbeHandler(w http.ResponseWriter, r *http.Request) {
 
 	output, err := e.rcloneClient.GetRemoteSize(remote)
 	if err != nil {
+		probeSuccess.WithLabelValues(remote).Set(0)
 		e.handleError(w, r, remote, "rclone probe failed", http.StatusInternalServerError, err)
 		return
 	}
 
 	// Update metrics with labels
-	e.rcloneSizeBytes.WithLabelValues(remote).Set(float64(output.Bytes))
-	e.rcloneObjectsCount.WithLabelValues(remote).Set(float64(output.Count))
-	e.probeSuccess.WithLabelValues(remote).Set(1)
+	rcloneSizeBytes.WithLabelValues(remote).Set(float64(output.Bytes))
+	rcloneObjectsCount.WithLabelValues(remote).Set(float64(output.Count))
+	probeSuccess.WithLabelValues(remote).Set(1)
 
 	log.Debug().
 		Str("remote", remote).
@@ -216,8 +215,8 @@ func (e *Exporter) ProbeHandler(w http.ResponseWriter, r *http.Request) {
 		Int64("objects", output.Count).
 		Msg("Probe successful")
 
-	// Serve metrics using custom registry
-	promhttp.HandlerFor(e.registry, promhttp.HandlerOpts{
+	// Serve metrics using the probe-specific registry
+	promhttp.HandlerFor(probeRegistry, promhttp.HandlerOpts{
 		ErrorHandling: promhttp.ContinueOnError,
 	}).ServeHTTP(w, r)
 }
