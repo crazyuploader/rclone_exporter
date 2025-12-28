@@ -30,7 +30,6 @@ builds:
       - -X main.version={{.Version}}
       - -X main.commit={{.FullCommit}}
       - -X main.buildDate={{.Date}}
-      - -X main.goVersion={{.Env.go_version}}
     flags:
       - -trimpath
 
