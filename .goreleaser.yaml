@@ -43,6 +43,20 @@ archives:
       - goos: windows
         formats: [zip]
 
+brews:
+  - repository:
+      owner: crazyuploader
+      name: homebrew-tools
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/crazyuploader/rclone_exporter"
+    description: "Prometheus exporter for rclone"
+    license: "Apache-2.0"
+    folder: Formula
+    test: |
+      system "#{bin}/rclone_exporter", "--help"
+    install: |
+      bin.install "rclone_exporter"
+
 changelog:
   sort: asc
   filters:
