@@ -52,12 +52,18 @@ homebrew_casks:
       owner: crazyuploader
       name: homebrew-tools
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    name: rclone_exporter
     homepage: "https://github.com/crazyuploader/rclone_exporter"
     description: "Prometheus exporter for rclone"
     license: "Apache-2.0"
-    name: rclone_exporter
     binaries:
       - rclone_exporter
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/rclone_exporter"]
+          end
 
 changelog:
   sort: asc
