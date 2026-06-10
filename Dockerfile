@@ -22,7 +22,7 @@ COPY . .
 RUN go build -o rclone_exporter ./cmd/rclone_exporter
 
 # Stage 2: Get rclone binary
-FROM alpine:3.23 AS rclone
+FROM alpine:3.24 AS rclone
 
 # Get architecture
 ARG TARGETARCH
@@ -44,7 +44,7 @@ RUN case "${TARGETARCH}" in \
     rm rclone.zip
 
 # Stage 3: Minimal runtime image
-FROM alpine:3.23
+FROM alpine:3.24
 
 # Set working directory
 WORKDIR /app
